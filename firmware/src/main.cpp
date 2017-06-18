@@ -2,12 +2,15 @@
 #include "ESP8266WiFi.h"
 #include "ESP8266HTTPClient.h"
 #include "ArduinoJson.h"
+#include "DHT.h"
 
 #include "FireBaseHttpClient.h"
 
+#define DHTPIN D1
+#define DHTTYPE DHT11   
 
-
-FirebaseHttpClient httpClient = FirebaseHttpClient(FIREBASE_HOST, FIREBASE_AUTH_TOKEN);
+DHT dht(DHTPIN, DHTTYPE);
+FirebaseHttpClient httpClient(FIREBASE_HOST, FIREBASE_AUTH_TOKEN);
 
 void startSerial() {
     Serial.begin(115200);
@@ -36,33 +39,34 @@ void startWifi() {
     Serial.println(WiFi.localIP());
 }
 
-void parseNode(const char* json) {
-    StaticJsonBuffer<200> jsonBuffer;
-    JsonObject& root = jsonBuffer.parseObject(json);
-
-    int humidity = root["humidity"];
-    int temperature = root["temperature"];
-
-    if(humidity != 0){
-        digitalWrite(BUILTIN_LED, HIGH);
-    } else {
-        digitalWrite(BUILTIN_LED, LOW);
-    }
-}
-
-void setup() {
-    pinMode(BUILTIN_LED, OUTPUT);
-    
+void setup() {    
     startSerial();
     startWifi();
+    dht.begin();
 }
 
 void loop() {
+
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature(/*isFahrenheit=*/true);
+    if (isnan(humidity) || isnan(temperature)) {
+        Serial.println("Failed to read from DHT sensor!");
+        return;
+    }
+    float heatIndex = dht.computeHeatIndex(temperature, humidity);
+
+    StaticJsonBuffer<200> jsonBuffer;
+    JsonObject& root = jsonBuffer.createObject();
+    root["temperature"] = temperature;
+    root["humidity"] = humidity;
+    root["heat"] = heatIndex;
+
+    char buffer[200];
+    root.printTo(buffer, sizeof(buffer));
+    
     String response = "";
-    int statusCode = httpClient.get("/node.json", &response);
-    if (statusCode == 200) {
-        parseNode(response.c_str());
-    } else {
+    int statusCode = httpClient.put("/node.json", String(buffer).c_str(), &response);
+    if (statusCode != 200) {
         Serial.print("Server error: ");
         Serial.println(statusCode);
         Serial.print("Response body: ");
