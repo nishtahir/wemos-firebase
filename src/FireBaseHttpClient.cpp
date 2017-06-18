@@ -7,6 +7,13 @@ FirebaseHttpClient::FirebaseHttpClient(const char* _host, const char* _token, in
 }
 
 int FirebaseHttpClient::get(const char* path, String* response) {
-    String tokenedPath = String(path) + "?access_token=" + String(token);
-    return RestClient::get(tokenedPath.c_str(), response);
+    return RestClient::get(appendTokenToPath(path).c_str(), response);
+}
+
+int FirebaseHttpClient::put(const char* path, const char* body, String* response) {
+    return RestClient::put(appendTokenToPath(path).c_str(), body, response);
+}
+
+String FirebaseHttpClient::appendTokenToPath(const char* path) {
+    return String(path) + "?access_token=" + String(token);
 }
